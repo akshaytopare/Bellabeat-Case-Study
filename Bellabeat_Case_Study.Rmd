@@ -1,0 +1,402 @@
+---
+title: "Bellabeat-Case Study"
+author: "Akshay Topare"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+### Introduction
+Urška Sršen and Sando Mur founded Bellabeat, a high-tech company that manufactures health-focused smart products.
+Sršen used her background as an artist to develop beautifully designed technology that informs and inspires women around
+the world. Collecting data on activity, sleep, stress, and reproductive health has allowed Bellabeat to empower women with
+knowledge about their own health and habits. Since it was founded in 2013, Bellabeat has grown rapidly and quickly
+positioned itself as a tech-driven wellness company for women.
+
+### Business Task
+Analyzing smart device fitness data could help unlock new growth opportunities for the company. Focusing on one of the
+Bellabeat’s products and analyze smart device data to gain insight into how consumers are using their smart devices. The
+insights we discover will then help guide marketing strategy for the company.
+
+### Stakeholders
+ * Primary
+ 1. Urška Sršen, cofounder and Chief Creative Officer
+ 2. Sando Mur, cofounder
+
+ * Secondary
+ 1. Bellabeat marketing analytics team
+ 
+### Data Source
+FitBit Fitness Tracker Data <https://www.kaggle.com/arashnic/fitbit> (CC0: Public Domain, dataset made available through Mobius): This Kaggle data set
+contains personal fitness tracker from thirty fitbit users. Thirty eligible Fitbit users consented to the submission of
+personal tracker data, including minute-level output for physical activity, heart rate, and sleep monitoring. It includes
+information about daily activity, steps, and heart rate that can be used to explore users’ habits.
+
+### Installing and loading common packages and libraries
+```{r}
+library(tidyverse)
+library(lubridate)
+library(sqldf)
+library(ggplot2)
+```
+### STEP 1: COLLECT DATA
+### Loading your CSV files
+Here we'll create a dataframe named 'daily_activity' and read in one of the CSV files from the dataset.
+We'll create another dataframes for the sleep data, daily steps and daily calories
+
+```{r}
+daily_activity <- read.csv("dailyActivity_merged.csv")
+sleep_day <- read.csv("sleepDay_merged.csv")
+daily_steps <- read.csv("dailySteps_merged.csv")
+daily_calories <- read.csv("dailyCalories_merged.csv")
+```
+
+### Take a look at the
+
+```{r}
+head(daily_activity)
+head(sleep_day)
+head(daily_calories)
+head(daily_steps)
+```
+### Identify all the columns in the daily_activity, sleep_day, daily_calories and daily_steps data.
+
+```{r}
+colnames(daily_activity)
+colnames(sleep_day)
+colnames(daily_calories)
+colnames(daily_steps)
+```
+### STEP 2: CLEAN UP AND ADD DATA TO PREPARE FOR ANALYSIS
+### Convert columns into appropriate data types
+
+As we have noticed ActivityDate column in daily_activity is in character data type, let's convert it into date
+similarly SleepDay column in sleep_day and ActivityDay column in both daily_calories and daily_steps
+
+```{r}
+daily_activity$ActivityDate <- daily_activity$ActivityDate %>% as.Date("%m/%d/%Y")
+```
+
+```{r}
+sleep_day$SleepDay <- 
+  date(mdy_hms(sleep_day$SleepDay))
+```
+
+
+```{r}
+daily_calories$ActivityDay <- mdy(daily_calories$ActivityDay)
+```
+
+```{r}
+daily_steps$ActivityDay <- mdy(daily_steps$ActivityDay)
+```
+
+
+Let's Check the data
+
+```{r}
+str(daily_activity)
+str(sleep_day)
+str(daily_calories)
+str(daily_steps)
+```
+
+Let's convert Id column in each dataframe into character as we are not going to do any calculations on Id
+
+```{r}
+daily_activity$Id <- as.character(daily_activity$Id)
+sleep_day$Id <- as.character(sleep_day$Id)
+daily_calories$Id <- as.character(daily_calories$Id)
+daily_steps$Id <- as.character(daily_steps$Id)
+```
+
+Let's Check The Data
+
+```{r}
+str(daily_activity)
+str(sleep_day)
+str(daily_calories)
+str(daily_steps)
+```
+
+We have observed that all the data in daily_calories and daily_steps dataframe is also present in daily_activity 
+so we can ignore these two dataframes
+
+
+Let's join tables daily_activity and sleep_day so that we can do analysis in a better way
+We are going to join these two tables based on Id and ActivityDate(SleepDay in sleep_day)
+We are going to take certain important columns from these two tables which are important for our analysis
+
+
+```{r}
+activity_sleep_combined <- sqldf("SELECT ac.Id, ac.ActivityDate, ac.TotalSteps
+      , ac.TotalDistance, ac.SedentaryMinutes, ac.Calories, sl.TotalSleepRecords
+      , sl.TotalMinutesAsleep, sl.TotalTimeInBed FROM daily_activity ac
+      INNER JOIN sleep_day sl
+      ON ac.Id = sl.Id
+      AND ac.ActivityDate = sl.SleepDay")
+```
+
+The data can only be aggregated at the Id-level, which is too granular. We will want to add some additional columns of 
+data – such as day, month  that provide additional opportunities to aggregate the data.
+
+Add columns that list the date and month of the dataframe
+
+This will allow us to aggregate data for each month, day before completing these operations we could only aggregate at the level
+
+```{r}
+activity_sleep_combined$day <- day(activity_sleep_combined$ActivityDate)
+activity_sleep_combined$day_of_week <- weekdays(activity_sleep_combined$ActivityDate)
+activity_sleep_combined$month <- month(activity_sleep_combined$ActivityDate)
+```
+
+Let's check our data
+
+```{r}
+str(activity_sleep_combined)
+```
+
+
+
+### Note that all datasets have the 'Id' field - this can be used to merge the datasets.
+
+## Understanding some summary statistics
+How many unique participants are there in each dataframe? It looks like there may be more participants in the daily activity dataset than the sleep dataset.
+
+
+```{r}
+n_distinct(daily_activity$Id)
+n_distinct(sleep_day$Id)
+n_distinct(daily_calories$Id)
+n_distinct(daily_steps$Id)
+n_distinct(activity_sleep_combined$Id)
+```
+How many observations are there in each dataframe?
+
+```{r}
+nrow(daily_activity)
+nrow(sleep_day)
+nrow(daily_calories)
+nrow(daily_steps)
+nrow(activity_sleep_combined)
+```
+## STEP 3: CONDUCT DESCRIPTIVE ANALYSIS
+
+Let's do some quick summary statistics we'd want to know about combined data frame
+
+For the activity_sleep_combined data frame
+
+```{r}
+activity_sleep_combined %>%
+  select(TotalSteps,TotalDistance,SedentaryMinutes) %>%
+  summary()
+```
+
+
+
+```{r}
+activity_sleep_combined %>%
+  select(TotalSleepRecords,
+         TotalMinutesAsleep,
+         TotalTimeInBed) %>%
+  summary()
+
+```
+
+Let's aggregate the data
+
+Let's aggregate based on Id
+
+```{r}
+aggregate(cbind(avg_TotalSteps = activity_sleep_combined$TotalSteps,
+                avg_TotalDistance = activity_sleep_combined$TotalDistance,
+                avg_SedentaryMinutes = activity_sleep_combined$SedentaryMinutes,
+                avg_Calories = activity_sleep_combined$Calories,
+                avg_TotalMinutesAsleep = activity_sleep_combined$TotalMinutesAsleep,
+                avg_TotalTimeInBed=activity_sleep_combined$TotalTimeInBed)~activity_sleep_combined$Id
+          , FUN = mean)
+```
+Let's aggregate based on day_of_week
+
+```{r}
+aggregate(cbind(avg_TotalSteps = activity_sleep_combined$TotalSteps,
+            avg_TotalDistance = activity_sleep_combined$TotalDistance,
+            avg_SedentaryMinutes = activity_sleep_combined$SedentaryMinutes,
+            avg_Calories = activity_sleep_combined$Calories,
+            avg_TotalMinutesAsleep = activity_sleep_combined$TotalMinutesAsleep,
+            avg_TotalTimeInBed=activity_sleep_combined$TotalTimeInBed)~activity_sleep_combined$day_of_week
+          , FUN = mean)
+```
+Notice that the days of the week are out of order. Let’s fix that
+
+
+```{r}
+activity_sleep_combined$day_of_week <- 
+  ordered(activity_sleep_combined$day_of_week, 
+            levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+```
+
+
+```{r}
+aggregate(cbind(avg_TotalSteps = activity_sleep_combined$TotalSteps,
+            avg_TotalDistance = activity_sleep_combined$TotalDistance,
+            avg_SedentaryMinutes = activity_sleep_combined$SedentaryMinutes,
+            avg_Calories = activity_sleep_combined$Calories,
+            avg_TotalMinutesAsleep = activity_sleep_combined$TotalMinutesAsleep,
+            avg_TotalTimeInBed = activity_sleep_combined$TotalTimeInBed)~activity_sleep_combined$day_of_week
+          , FUN = mean)
+```
+## STEP 4: ViSUALIZE THE DATA
+
+Let's Determine how many average steps consumers take on each day
+
+```{r}
+
+activity_sleep_combined %>% group_by(day_of_week) %>%
+  summarise(avg_TotalSteps = mean(TotalSteps)) %>%
+  ggplot(aes(x=day_of_week,y=avg_TotalSteps,fill=day_of_week)) + geom_col() +
+  labs(title = "Weekday Vs Total Steps") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot1.jpg')
+dev.off()
+```
+Let's determine average distance consumers walk on each weekday
+
+```{r}
+activity_sleep_combined %>% group_by(day_of_week) %>%
+  summarize(avg_TotalDistance = mean(TotalDistance)) %>%
+  ggplot(aes(x=day_of_week,y=avg_TotalDistance,fill=day_of_week)) + geom_col() +
+  labs(title = "Weekday Vs Total Distance") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot2.jpg')
+dev.off()
+```
+Let's find out on average how much time consumers are seated or inactive on each weekday 
+
+```{r}
+activity_sleep_combined %>% group_by(day_of_week) %>%
+  summarize(avg_SedentaryMinutes=mean(SedentaryMinutes)) %>%
+  ggplot(aes(x=day_of_week,y=avg_SedentaryMinutes,fill=day_of_week)) + geom_col() +
+  labs(title = "Weekday Vs Total Sedentary Minutes") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot3.jpg')
+dev.off()
+```
+Let's find out How much calories are burned on each day of week
+
+```{r}
+activity_sleep_combined %>% group_by(day_of_week) %>%
+  summarize(avg_Calories=mean(Calories)) %>%
+  ggplot(aes(x=day_of_week,y=avg_Calories,fill=day_of_week)) + geom_col() +
+  labs(title = "Weekday Vs Calories") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot4.jpg')
+dev.off()
+```
+
+Let's determine sleeping habbits of consumers
+
+```{r}
+activity_sleep_combined %>% group_by(day_of_week) %>%
+  summarize(avg_TotalMinutesAsleep=mean(TotalMinutesAsleep)) %>%
+  ggplot(aes(x=day_of_week,y=avg_TotalMinutesAsleep,fill=day_of_week)) + geom_col() +
+  labs(title = "Weekday Vs Total Minutes Asleep") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot5.jpg')
+dev.off()
+```
+```{r}
+activity_sleep_combined %>% group_by(day_of_week) %>%
+  summarize(avg_TotalTimeInBed=mean(TotalTimeInBed)) %>%
+  ggplot(aes(x=day_of_week,y=avg_TotalTimeInBed,fill=day_of_week)) + geom_col() +
+  labs(title = "Weekday Vs Total Time In Bed") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot6.jpg')
+dev.off()
+```
+Let's find out relationship between TotalMinutesAsleep and TotalTimeInBed
+
+```{r}
+activity_sleep_combined %>%
+  ggplot(aes(x=TotalMinutesAsleep,y=TotalTimeInBed)) + geom_point() +
+  labs(title = "Total Minutes Asleep Vs Total Time In Bed") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot7.jpg')
+dev.off()
+```
+
+What's the relationship between steps taken in a day and sedentary minutes? How could this help inform the customer segments that we can market to? E.g. position this more as a way to get started in walking more? Or to measure steps that you're already taking?
+
+```{r}
+activity_sleep_combined %>%
+  ggplot(aes(x=TotalSteps,y=SedentaryMinutes)) + geom_point() +
+  labs(title = "Total Steps Vs Sedentary Minutes") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot8.jpg')
+dev.off()
+```
+Let's find out relationship between sitting or inactiveness and calories
+
+```{r}
+activity_sleep_combined %>%
+  ggplot(aes(x=SedentaryMinutes,y=Calories)) + geom_point() +
+  labs(title = "Sedentary Minutes Vs Calories") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot9.jpg')
+dev.off()
+```
+Let's determine relationship between number of steps and sleep
+
+```{r}
+activity_sleep_combined %>%
+  ggplot(aes(x=TotalSteps,y=TotalMinutesAsleep)) + geom_point() +
+  labs(title = "Total Steps Vs Sleep") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.copy(jpeg,filename='plot10.jpg')
+dev.off()
+```
+STEP 5: EXPORT SUMMARY FILE FOR FURTHER ANALYSIS
+
+```{r}
+activity_sleep_summary <- aggregate(cbind(avg_TotalSteps = activity_sleep_combined$TotalSteps,
+                avg_TotalDistance = activity_sleep_combined$TotalDistance,
+                avg_SedentaryMinutes = activity_sleep_combined$SedentaryMinutes,
+                avg_Calories = activity_sleep_combined$Calories,
+                avg_TotalMinutesAsleep = activity_sleep_combined$TotalMinutesAsleep,
+                avg_TotalTimeInBed = activity_sleep_combined$TotalTimeInBed)~activity_sleep_combined$day_of_week
+          , FUN = mean)
+```
+
+Create a csv file that we will visualize in Excel, Tableau, or my presentation software
+
+```{r}
+write.csv(activity_sleep_summary, file = "activity_sleep_summary.csv")
+```
+
+## Findings
+1.	Total steps by consumers are highest on Saturdays and are lowest on Sundays. Total steps gradually reduce from Monday to Friday.
+2.	Total distance by consumers is highest on Saturdays and are lowest on Sundays. Total distance gradually decreases from Monday to Friday.
+3.	Highest calories are burnt on Saturdays and lowest on Sundays. Calories burnt gradually decreases from Monday to Friday.
+4.	Consumers Slept for largest minutes on Sundays and slept relatively less in weekdays.
+5.	Time in beds is largest minutes on Sundays and surprisingly second highest on Wednesday.
+6.	We found a positive correlation between average Total minutes asleep and Total time in bed.
+7.	We found slightly negative correlation between Total steps and Sedentary minutes. It means those who walk larger number of steps are less likely to be inactive or remain seated.
+8.	We also found a slightly negative correlation between Total steps and Total minutes asleep. It means those consumers who walk larger number of steps are sleeping lesser.
+
+## Inference
+1.	Consumer behavior changes in weekdays and in weekend. In weekdays activity and sleeping pattern is almost similar but on weekend the variations are high.
+2.	Walking more means less Sedentary minutes which means Walking for larger number of steps can reduce Sedentary minutes.
+3.	Walking for larger number of steps could reduce your sleep time.
+
+## Recommendations
+1.	Bellabeat could share these findings with consumers to spread awareness about daily activities and sleeping habits and at the same time to promote how Bellabeat products could benefit the consumers to streamline these habits to make them healthier.
+2.	Bellabeat could promote their membership program to consumers which offers a subscription-based membership program for users. Membership gives users 24/7 access to fully personalized guidance on nutrition, activity, sleep, health and beauty, and mindfulness based on their lifestyle and goals. This could create discipline and offer healthier life.
+3.	Bellbeat could use personized adds to promote their products to the targeted group and make them aware that how these products could be used for health benefits.
+
+ 
